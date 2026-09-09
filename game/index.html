@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Thembulls Tow Run 3D</title>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:Arial,sans-serif;touch-action:none}
+    #game{width:100%;height:100%;display:block}
+    #hud{position:fixed;top:0;left:0;right:0;z-index:5;display:flex;justify-content:space-between;gap:8px;padding:10px 12px;color:#fff;background:rgba(0,0,0,.76);border-bottom:3px solid #f4b400;font-weight:bold}
+    #mission{color:#f4b400}
+    #message{position:fixed;top:58px;left:50%;z-index:6;transform:translateX(-50%);width:min(92%,560px);padding:10px;border-radius:10px;color:#fff;background:rgba(0,0,0,.75);text-align:center}
+    #controls{position:fixed;left:0;right:0;bottom:14px;z-index:7;display:flex;justify-content:space-between;padding:0 16px}
+    .pad{display:grid;grid-template-columns:repeat(3,58px);grid-template-rows:repeat(2,58px);gap:7px}
+    button{border:2px solid #f4b400;border-radius:12px;color:#fff;background:rgba(0,0,0,.72);font-size:25px;font-weight:bold}
+    button:active{color:#000;background:#f4b400}
+    #up{grid-column:2} #left{grid-column:1;grid-row:2} #down{grid-column:2;grid-row:2} #right{grid-column:3;grid-row:2}
+    #action{align-self:flex-end;width:95px;height:62px;color:#000;background:#f4b400;font-size:17px}
+    #back{position:fixed;left:12px;top:62px;z-index:8;color:#f4b400;text-decoration:none;font-weight:bold}
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud"><span>THEMBULLS TOW RUN 3D</span><span id="stats">Jobs: 0 | Fuel: 100%</span></div>
+  <a id="back" href="../">← Website</a>
+  <div id="message"><span id="mission">Mission:</span> Drive the yellow tow truck to the stranded red car.</div>
+  <div id="controls">
+    <div class="pad">
+      <button id="up" aria-label="Drive forward">▲</button>
+      <button id="left" aria-label="Turn left">◀</button>
+      <button id="down" aria-label="Reverse">▼</button>
+      <button id="right" aria-label="Turn right">▶</button>
+    </div>
+    <button id="action">HOOK CAR</button>
+  </div>
+
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script>
+    const canvas=document.getElementById("game");
+    const engine=new BABYLON.Engine(canvas,true);
+    const scene=new BABYLON.Scene(engine);
+    scene.clearColor=new BABYLON.Color4(.36,.64,.86,1);
+
+    const camera=new BABYLON.FollowCamera("camera",new BABYLON.Vector3(0,8,-14),scene);
+    camera.radius=15;
+    camera.heightOffset=7;
+    camera.rotationOffset=180;
+    camera.cameraAcceleration=.06;
+    camera.maxCameraSpeed=15;
+
+    const light=new BABYLON.HemisphericLight("sun",new BABYLON.Vector3(0,1,0),scene);
+    light.intensity=.95;
+
+    const ground=BABYLON.MeshBuilder.CreateGround("ground",{width:120,height:260},scene);
+    const grass=new BABYLON.StandardMaterial("grass",scene);
+    grass.diffuseColor=new BABYLON.Color3(.14,.42,.18);
+    ground.material=grass;
+
+    const road=BABYLON.MeshBuilder.CreateGround("road",{width:20,height:260},scene);
+    road.position.y=.02;
+    const asphalt=new BABYLON.StandardMaterial("asphalt",scene);
+    asphalt.diffuseColor=new BABYLON.Color3(.12,.13,.15);
+    road.material=asphalt;
+
+    const lineMat=new BABYLON.StandardMaterial("line",scene);
+    lineMat.diffuseColor=new BABYLON.Color3(1,.75,0);
+    for(let z=-120;z<=120;z+=12){
+      const line=BABYLON.MeshBuilder.CreateBox("line",{width:.35,height:.05,depth:6},scene);
+      line.position.set(0,.06,z);
+      line.material=lineMat;
+    }
+
+    function material(name,color){
+      const m=new BABYLON.StandardMaterial(name,scene);
+      m.diffuseColor=color;
+      return m;
+    }
+    const yellow=material("towYellow",new BABYLON.Color3(1,.68,0));
+    const black=material("black",new BABYLON.Color3(.025,.025,.025));
+    const silver=material("silver",new BABYLON.Color3(.42,.45,.48));
+    const red=material("red",new BABYLON.Color3(.8,.04,.04));
+
+    const truck=new BABYLON.TransformNode("truck",scene);
+    const cab=BABYLON.MeshBuilder.CreateBox("cab",{width:3.2,height:2.4,depth:3.3},scene);
+    cab.position.set(0,1.5,1.6); cab.material=yellow; cab.parent=truck;
+    const bed=BABYLON.MeshBuilder.CreateBox("bed",{width:3.4,height:.45,depth:5.2},scene);
+    bed.position.set(0,.75,-2.5); bed.material=silver; bed.parent=truck;
+    const bumper=BABYLON.MeshBuilder.CreateBox("bumper",{width:3.5,height:.35,depth:.35},scene);
+    bumper.position.set(0,.65,3.35); bumper.material=black; bumper.parent=truck;
+    [[-1.55,.55,1.8],[1.55,.55,1.8],[-1.55,.55,-2.5],[1.55,.55,-2.5]].forEach(function(p){
+      const wheel=BABYLON.MeshBuilder.CreateCylinder("wheel",{diameter:1.2,height:.45,tessellation:20},scene);
+      wheel.rotation.z=Math.PI/2; wheel.position.set(p[0],p[1],p[2]); wheel.material=black; wheel.parent=truck;
+    });
+    truck.position.set(0,0,-95);
+    camera.lockedTarget=truck;
+
+    const target=BABYLON.MeshBuilder.CreateBox("strandedCar",{width:3,height:1.25,depth:5},scene);
+    target.position.set(3,1,-12); target.material=red;
+    const targetTop=BABYLON.MeshBuilder.CreateBox("carTop",{width:2.5,height:1,depth:2.7},scene);
+    targetTop.position.set(3,2,-12); targetTop.material=red;
+
+    for(let i=0;i<18;i++){
+      const building=BABYLON.MeshBuilder.CreateBox("building",{width:8+Math.random()*7,height:6+Math.random()*18,depth:8+Math.random()*7},scene);
+      const side=i%2===0?-1:1;
+      building.position.set(side*(17+Math.random()*14),building.scaling.y+3,-110+i*13);
+      building.material=material("brick"+i,new BABYLON.Color3(.25+Math.random()*.3,.18,.14));
+    }
+
+    const keys={up:false,down:false,left:false,right:false};
+    let fuel=100,jobs=0,hooked=false;
+    function bind(id,key){
+      const el=document.getElementById(id);
+      ["pointerdown","touchstart"].forEach(function(e){el.addEventListener(e,function(ev){ev.preventDefault();keys[key]=true;});});
+      ["pointerup","pointercancel","pointerleave","touchend"].forEach(function(e){el.addEventListener(e,function(ev){ev.preventDefault();keys[key]=false;});});
+    }
+    bind("up","up");bind("down","down");bind("left","left");bind("right","right");
+    addEventListener("keydown",function(e){
+      if(e.key==="ArrowUp"||e.key==="w")keys.up=true;
+      if(e.key==="ArrowDown"||e.key==="s")keys.down=true;
+      if(e.key==="ArrowLeft"||e.key==="a")keys.left=true;
+      if(e.key==="ArrowRight"||e.key==="d")keys.right=true;
+    });
+    addEventListener("keyup",function(e){
+      if(e.key==="ArrowUp"||e.key==="w")keys.up=false;
+      if(e.key==="ArrowDown"||e.key==="s")keys.down=false;
+      if(e.key==="ArrowLeft"||e.key==="a")keys.left=false;
+      if(e.key==="ArrowRight"||e.key==="d")keys.right=false;
+    });
+
+    document.getElementById("action").addEventListener("click",function(){
+      const distance=BABYLON.Vector3.Distance(truck.position,target.position);
+      if(distance<9&&!hooked){
+        hooked=true;jobs=1;
+        target.parent=truck;target.position.set(0,1,-5.1);
+        targetTop.parent=truck;targetTop.position.set(0,2,-5.1);
+        document.getElementById("message").innerHTML="<span id='mission'>Success:</span> Vehicle secured! Return to the starting yard.";
+      }else if(!hooked){
+        document.getElementById("message").textContent="Move closer to the stranded red car first.";
+      }
+    });
+
+    scene.onBeforeRenderObservable.add(function(){
+      const dt=engine.getDeltaTime()/16.67;
+      let moving=0;
+      if(keys.up&&fuel>0)moving=.22;
+      if(keys.down&&fuel>0)moving=-.14;
+      if(moving!==0){
+        const forward=new BABYLON.Vector3(Math.sin(truck.rotation.y),0,Math.cos(truck.rotation.y));
+        truck.position.addInPlace(forward.scale(moving*dt));
+        fuel=Math.max(0,fuel-Math.abs(moving)*.004*dt);
+      }
+      if(keys.left)truck.rotation.y-=.032*dt*(moving<0?-1:1);
+      if(keys.right)truck.rotation.y+=.032*dt*(moving<0?-1:1);
+      document.getElementById("stats").textContent="Jobs: "+jobs+" | Fuel: "+Math.round(fuel)+"%";
+    });
+
+    engine.runRenderLoop(function(){scene.render();});
+    addEventListener("resize",function(){engine.resize();});
+  </script>
+</body>
+</html>
